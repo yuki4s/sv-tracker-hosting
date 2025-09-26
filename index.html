@@ -12,31 +12,35 @@ const CONFIGS = {
   }
 };
 
+const ISSUE_API = 'https://script.google.com/macros/s/AKfycbxWLL37SVeYLS86fAioZEikNWywGpmcC_HPIK_pR31i5_iXlz_a0JXbz0Yu7n4/exec?route=issue'
+
 (async () => {
   try {
-    await liff.init({liffId: '2008180210-1WyAevA4'}); // LIFF ID
+    await liff.init({ liffId: '2008180210-1WyAevA4' });
+    if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+
     const idToken = liff.getIDToken();
     if (!idToken) throw new Error('ID token unavailable');
 
-    // どのフォームかをクエリで判定（デフォルトは meal）
     const qs = new URLSearchParams(location.search);
     const which = (qs.get('form') || 'meal').toLowerCase();
     const cfg = CONFIGS[which] || CONFIGS.meal;
 
-    // ワンタイムトークン発行
-    const res = await fetch(location.href.split('?')[0] + '?route=issue', {
+    // ★GitHubにPOSTしない。GASの /exec?route=issue にPOSTする
+    const body = new URLSearchParams({ idToken, form: which }).toString();
+    const res  = await fetch(ISSUE_API, {
       method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ idToken, form: which })
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
     });
     const { token } = await res.json();
+    if (!token) throw new Error('token issue failed');
 
-    // フォームURLに token を注入
     const url = new URL(cfg.formPrefillUrl);
     url.searchParams.set(cfg.entryTokenKey, token);
     liff.openWindow({ url: url.toString(), external: false });
   } catch (e) {
-    document.getElementById('s').textContent = 'Error: ' + e.message;
+    document.getElementById('s').textContent = 'Error: ' + (e.message || e);
   }
 })();
 </script></body>
