@@ -3,23 +3,33 @@
 <body><p>起動中…</p>
 <script>
 const LIFF_ID = "2008180210-1WyAevA4";
-const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-jwqLt0KAEBXNtdgvM8rFb5xMjMJs9x-WZ3pZp32trAwRn/exec"; // Web Apps (後述)
+const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-jwqLt0KAEBXNtdgvM8rFb5xMjMJs9x-WZ3pZp32trAwRn/exec";
 
 (async () => {
   await liff.init({ liffId: LIFF_ID });
   if (!liff.isLoggedIn()) { liff.login(); return; }
 
-  const idToken = liff.getIDToken(); // openid スコープ必須
-  // 例: SV/朝食
-  const body = new URLSearchParams({
-    action:"mint", form:"sv", mealType:"breakfast", idToken
-  });
-  const res = await fetch(GAS_API, {
-    method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body
-  });
+  // 1) 未ログインならログイン
+  if (!liff.isLoggedIn()) {
+    liff.login({ scope: 'openid profile', prompt: 'consent' });
+    return;
+  }
+
+  // 2) IDトークン取得。無ければ同意を取り直す
+  let idToken = liff.getIDToken();
+  if (!idToken) {
+    liff.login({ scope: 'openid profile', prompt: 'consent' });
+    return;
+  }
+
+  // （デバッグに：付与済みスコープを出す。必要時のみ）
+  // liff.permission.getGrantedAll().then(s => console.log('granted:', s)); // 要 v2.27+  :contentReference[oaicite:3]{index=3}
+
+  const body = new URLSearchParams({ action:"mint", form:"sv", mealType:"breakfast", idToken });
+  const res = await fetch(GAS_API, { method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body });
   const { ok, prefillUrl, error } = await res.json();
-  if (!ok) throw new Error(error||"API error");
-  location.href = prefillUrl; // フォームへ遷移
-})();
+  if (!ok) throw new Error(error || "API error");
+  location.href = prefillUrl;
+})().catch(e => { document.body.innerHTML = "<pre>起動失敗: " + String(e) + "</pre>"; });
 </script>
 </body>
