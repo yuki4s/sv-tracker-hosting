@@ -9,23 +9,17 @@ const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-j
   await liff.init({ liffId: LIFF_ID });
   if (!liff.isLoggedIn()) { liff.login(); return; }
 
-  // 1) LINE 一意ID（sub）を取得（LIFFスコープに openid を付けること）
-  const sub = liff.getDecodedIDToken()?.sub || "";
-
-  // 2) GAS に送って，プレフィルURLを受け取る（simple request）
-  const body = new URLSearchParams({ action:"mint", liffSub: sub });
+  const idToken = liff.getIDToken(); // openid スコープ必須
+  // 例: SV/朝食
+  const body = new URLSearchParams({
+    action:"mint", form:"sv", mealType:"breakfast", idToken
+  });
   const res = await fetch(GAS_API, {
-    method:"POST",
-    headers:{ "Content-Type":"application/x-www-form-urlencoded" },
-    body
+    method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body
   });
   const { ok, prefillUrl, error } = await res.json();
-  if (!ok) throw new Error(error || "API error");
-
-  // 3) Googleフォームへ遷移
-  location.href = prefillUrl;
-})().catch(e => {
-  document.body.innerHTML = "<pre>起動失敗: " + String(e) + "</pre>";
-});
+  if (!ok) throw new Error(error||"API error");
+  location.href = prefillUrl; // フォームへ遷移
+})();
 </script>
 </body>
