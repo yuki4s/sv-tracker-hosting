@@ -1,46 +1,69 @@
-<!doctype html><meta charset="utf-8">
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<body><p id="s">loading…</p><script>
-const CONFIGS = {
-  meal: {
-    formPrefillUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSfsFIsPh8z71THfilhJAr4aOWkMa-cmxTVwlSitu4MdOzhnUA/viewform?usp=pp_url',
-    entryTokenKey: 'entry.208491577'   // meal用「token」設問のフルキー
-  },
-  weight: {
-    formPrefillUrl: 'https://docs.google.com/forms/d/e/.../viewform?usp=pp_url', // 要編集
-    entryTokenKey: 'entry.222222222'   // weight用「token」設問のフルキー
-  }
-};
+<body>
+  <h1>食事記録</h1>
+  <form id="mealForm">
+    <label>食事区分
+      <select name="mealType" required>
+        <option value="breakfast">朝食</option>
+        <option value="lunch">昼食</option>
+        <option value="dinner">夕食</option>
+        <option value="snack">間食</option>
+      </select>
+    </label><br>
+    <!-- 0以上の半角数値。整数/小数を許可 -->
+    <label>主食SV <input name="svStaple" inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
+    <label>副菜SV <input name="svSide"   inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
+    <label>主菜SV <input name="svMain"   inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
+    <label>牛乳・乳製品SV <input name="svDairy" inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
+    <label>果物SV <input name="svFruit"  inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
+    <label>メモ（任意）<textarea name="memo"></textarea></label><br>
+    <button type="submit">送信</button>
+  </form>
 
-const ISSUE_API = 'https://script.google.com/macros/s/AKfycbxWLL37SVeYLS86fAioZEikNWywGpmcC_HPIK_pR31i5_iXlz_a0JXbz0Yu7n4/exec?route=issue'
+  <script>
+    const LIFF_ID = "YOUR_LIFF_ID";     // ← LINE Developers で発行された LIFF ID
+    const GAS_URL = "YOUR_GAS_EXEC_URL"; // ← GAS Web Apps の /exec
 
-(async () => {
-  try {
-    await liff.init({ liffId: '2008180210-1WyAevA4' });
-    if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+    (async () => {
+      await liff.init({ liffId: LIFF_ID }); // 必ず Endpoint URL 配下で実行
+      if (!liff.isLoggedIn()) liff.login(); // 外部ブラウザでもログイン誘導
+    })().catch(console.error);
 
-    const idToken = liff.getIDToken();
-    if (!idToken) throw new Error('ID token unavailable');
+    document.getElementById("mealForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      // 1) LIFF IDトークンから sub（一意ID）を取得（openid スコープ要）
+      let sub = null;
+      try {
+        const idt = liff.getDecodedIDToken(); // { sub, name, picture, ... }
+        sub = idt && idt.sub ? idt.sub : null; // 取得できない場合あり（ログイン前など）
+      } catch (err) { console.warn("ID token not available:", err); }
 
-    const qs = new URLSearchParams(location.search);
-    const which = (qs.get('form') || 'meal').toLowerCase();
-    const cfg = CONFIGS[which] || CONFIGS.meal;
+      // 2) フォーム値
+      const fd = new FormData(e.target);
+      // 3) 送信：CORSプリフライト回避のため x-www-form-urlencoded を使用
+      const payload = new URLSearchParams({
+        mealType: fd.get("mealType"),
+        svStaple: fd.get("svStaple"),
+        svSide:   fd.get("svSide"),
+        svMain:   fd.get("svMain"),
+        svDairy:  fd.get("svDairy"),
+        svFruit:  fd.get("svFruit"),
+        memo:     fd.get("memo") || "",
+        liffSub:  sub || "",           // UIに出さない
+        // 予備としてクライアント側UUIDも同梱（サーバが自前ID発行できない場合の保険）
+        clientUuid: (self.crypto?.randomUUID?.() || Date.now().toString())
+      });
 
-    // ★GitHubにPOSTしない。GASの /exec?route=issue にPOSTする
-    const body = new URLSearchParams({ idToken, form: which }).toString();
-    const res  = await fetch(ISSUE_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: payload
+      });
+      const json = await res.json();
+      alert(json.ok ? "送信完了" : ("送信失敗: " + json.error));
     });
-    const { token } = await res.json();
-    if (!token) throw new Error('token issue failed');
-
-    const url = new URL(cfg.formPrefillUrl);
-    url.searchParams.set(cfg.entryTokenKey, token);
-    liff.openWindow({ url: url.toString(), external: false });
-  } catch (e) {
-    document.getElementById('s').textContent = 'Error: ' + (e.message || e);
-  }
-})();
-</script></body>
+  </script>
+</body>
