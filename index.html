@@ -1,69 +1,31 @@
-<!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<!doctype html><meta charset="utf-8">
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<body>
-  <h1>食事記録</h1>
-  <form id="mealForm">
-    <label>食事区分
-      <select name="mealType" required>
-        <option value="breakfast">朝食</option>
-        <option value="lunch">昼食</option>
-        <option value="dinner">夕食</option>
-        <option value="snack">間食</option>
-      </select>
-    </label><br>
-    <!-- 0以上の半角数値。整数/小数を許可 -->
-    <label>主食SV <input name="svStaple" inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
-    <label>副菜SV <input name="svSide"   inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
-    <label>主菜SV <input name="svMain"   inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
-    <label>牛乳・乳製品SV <input name="svDairy" inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
-    <label>果物SV <input name="svFruit"  inputmode="decimal" pattern="^(?:0|[1-9]\\d*)(?:\\.\\d+)?$" required></label><br>
-    <label>メモ（任意）<textarea name="memo"></textarea></label><br>
-    <button type="submit">送信</button>
-  </form>
+<body><p>起動中…</p>
+<script>
+const LIFF_ID = "2008180210-1WyAevA4";
+const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-jwqLt0KAEBXNtdgvM8rFb5xMjMJs9x-WZ3pZp32trAwRn/exec"; // Web Apps (後述)
 
-  <script>
-    const LIFF_ID = "2008180210-1WyAevA4";     // ← LINE Developers で発行された LIFF ID
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-jwqLt0KAEBXNtdgvM8rFb5xMjMJs9x-WZ3pZp32trAwRn/exec"; // ← GAS Web Apps の /exec
+(async () => {
+  await liff.init({ liffId: LIFF_ID });
+  if (!liff.isLoggedIn()) { liff.login(); return; }
 
-    (async () => {
-      await liff.init({ liffId: LIFF_ID }); // 必ず Endpoint URL 配下で実行
-      if (!liff.isLoggedIn()) liff.login(); // 外部ブラウザでもログイン誘導
-    })().catch(console.error);
+  // 1) LINE 一意ID（sub）を取得（LIFFスコープに openid を付けること）
+  const sub = liff.getDecodedIDToken()?.sub || "";
 
-    document.getElementById("mealForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      // 1) LIFF IDトークンから sub（一意ID）を取得（openid スコープ要）
-      let sub = null;
-      try {
-        const idt = liff.getDecodedIDToken(); // { sub, name, picture, ... }
-        sub = idt && idt.sub ? idt.sub : null; // 取得できない場合あり（ログイン前など）
-      } catch (err) { console.warn("ID token not available:", err); }
+  // 2) GAS に送って，プレフィルURLを受け取る（simple request）
+  const body = new URLSearchParams({ action:"mint", liffSub: sub });
+  const res = await fetch(GAS_API, {
+    method:"POST",
+    headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+    body
+  });
+  const { ok, prefillUrl, error } = await res.json();
+  if (!ok) throw new Error(error || "API error");
 
-      // 2) フォーム値
-      const fd = new FormData(e.target);
-      // 3) 送信：CORSプリフライト回避のため x-www-form-urlencoded を使用
-      const payload = new URLSearchParams({
-        mealType: fd.get("mealType"),
-        svStaple: fd.get("svStaple"),
-        svSide:   fd.get("svSide"),
-        svMain:   fd.get("svMain"),
-        svDairy:  fd.get("svDairy"),
-        svFruit:  fd.get("svFruit"),
-        memo:     fd.get("memo") || "",
-        liffSub:  sub || "",           // UIに出さない
-        // 予備としてクライアント側UUIDも同梱（サーバが自前ID発行できない場合の保険）
-        clientUuid: (self.crypto?.randomUUID?.() || Date.now().toString())
-      });
-
-      const res = await fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: payload
-      });
-      const json = await res.json();
-      alert(json.ok ? "送信完了" : ("送信失敗: " + json.error));
-    });
-  </script>
+  // 3) Googleフォームへ遷移
+  location.href = prefillUrl;
+})().catch(e => {
+  document.body.innerHTML = "<pre>起動失敗: " + String(e) + "</pre>";
+});
+</script>
 </body>
