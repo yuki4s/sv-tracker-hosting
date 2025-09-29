@@ -11,6 +11,10 @@ const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-j
   if (!liff.isLoggedIn()) { liff.login({ scope:'openid profile', prompt:'consent' }); return; }
   const idToken = liff.getIDToken(); if (!idToken) { liff.login({ scope:'openid profile', prompt:'consent' }); return; }
 
+  // ユーザID取得（profileスコープでOK）
+  const prof = await liff.getProfile();              // displayName等も取得可
+  const lineUserId = prof.userId;                    // ← これをGASへ送る（画像Webhookと突合する鍵） :contentReference[oaicite:1]{index=1}
+
   // --- ここがポイント：liff.state を見る ---
   const url = new URL(location.href);
   let form = null, mealType = null;
@@ -33,6 +37,9 @@ const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-j
   if (form) {
     const body = new URLSearchParams({ action:"mint", form, idToken });
     if (mealType) body.set("mealType", mealType);
+    // lineUserIdを同時送信
+    body.set("lineUserId", lineUserId);
+
     const res = await fetch(GAS_API, { method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body });
     const { ok, prefillUrl, error } = await res.json();
     if (!ok) throw new Error(error || "API error");
