@@ -8,58 +8,39 @@ const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-j
 
 (async () => {
   await liff.init({ liffId: LIFF_ID });
-
-  // ログイン & 同意
   if (!liff.isLoggedIn()) { liff.login({ scope:'openid profile', prompt:'consent' }); return; }
-  let idToken = liff.getIDToken();
-  if (!idToken) { liff.login({ scope:'openid profile', prompt:'consent' }); return; }
+  const idToken = liff.getIDToken(); if (!idToken) { liff.login({ scope:'openid profile', prompt:'consent' }); return; }
 
-  const qs = new URLSearchParams(location.search);
-  const form = qs.get('form');                   // 'sv' | 'weight'（既定なし）
-  const mealType = qs.get('mealType') || '';     // breakfast/lunch/dinner/snack or ''
+  // --- ここがポイント：liff.state を見る ---
+  const url = new URL(location.href);
+  let form = null, mealType = null;
 
-  if (form) {
-    // 直接該当フォームへ
-    await mintAndGo({ form, mealType, idToken });
+  if (url.searchParams.has('liff.state')) {
+    // 例: liff.state="/index.html?form=weight&mealType=breakfast"
+    const state = decodeURIComponent(url.searchParams.get('liff.state'));
+    const qs = state.includes('?') ? state.split('?')[1] : state; // "?..." または "key=val..." の両方に対応
+    const sp = new URLSearchParams(qs);
+    form = sp.get('form');
+    mealType = sp.get('mealType');
   } else {
-    // 簡易メニュー表示（任意）
-    renderMenu();
+    // 直接エンドポイントに来た場合（GitHub Pages のURLに ?form=... を付けたとき等）
+    const sp = url.searchParams;
+    form = sp.get('form');
+    mealType = sp.get('mealType');
   }
-})().catch(e => {
-  document.getElementById('app').innerHTML = "<pre>起動失敗: " + String(e) + "</pre>";
-});
 
-async function mintAndGo({ form, mealType, idToken }) {
-  const body = new URLSearchParams({ action:"mint", form, idToken });
-  if (mealType) body.set("mealType", mealType);
-  const res = await fetch(GAS_API, {
-    method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body
-  });
-  const { ok, prefillUrl, error } = await res.json();
-  if (!ok) throw new Error(error || "API error");
-  location.href = prefillUrl;
-}
-
-function renderMenu(){
-  const el = document.getElementById('app');
-  el.innerHTML = `
-    <h1>記録メニュー</h1>
-    <button data-form="sv" data-meal="breakfast">朝食のSV</button>
-    <button data-form="sv" data-meal="lunch">昼食のSV</button>
-    <button data-form="sv" data-meal="dinner">夕食のSV</button>
-    <button data-form="sv" data-meal="snack">間食のSV</button>
-    <hr>
-    <button data-form="weight">体重を記録</button>
-  `;
-  el.querySelectorAll('button').forEach(b=>{
-    b.onclick = async () => {
-      const form = b.getAttribute('data-form');
-      const mealType = b.getAttribute('data-meal') || '';
-      const idToken = liff.getIDToken();
-      if (!idToken) { liff.login({ scope:'openid profile', prompt:'consent' }); return; }
-      await mintAndGo({ form, mealType, idToken });
-    };
-  });
-}
+  // form が取れたらそのままミントして遷移
+  if (form) {
+    const body = new URLSearchParams({ action:"mint", form, idToken });
+    if (mealType) body.set("mealType", mealType);
+    const res = await fetch(GAS_API, { method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body });
+    const { ok, prefillUrl, error } = await res.json();
+    if (!ok) throw new Error(error || "API error");
+    location.href = prefillUrl;
+  } else {
+    // フォールバック（任意）：メニュー表示
+    document.body.innerHTML = `<p>メニューから選択してください</p>`;
+  }
+})();
 </script>
 </body>
