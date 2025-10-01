@@ -12,17 +12,19 @@ const app = document.getElementById('app');
 app.innerHTML = `
   <div>
     <div>Googleフォームを読み込み中…</div>
-    <div>6秒程度かかります．しばらくお待ちください．</div>
+    <br>
+    <div>6秒程度かかります。しばらくお待ちください。</div>
     <div>経過時間：<span id="elapsed">0</span> 秒</div>
   </div>
 `;
+
 const t0 = performance.now();
 const updateElapsed = () => {
-  const sec = ((performance.now() - t0) / 1000).toFixed(1);
+  const sec = Math.floor((performance.now() - t0) / 1000); // 小数点以下を切り捨て
   const el = document.getElementById('elapsed');
   if (el) el.textContent = sec;
 };
-const timerId = setInterval(updateElapsed, 100);
+const timerId = setInterval(updateElapsed, 1000); // 1秒ごとに更新
 updateElapsed();
 
 (async () => {
@@ -65,7 +67,7 @@ updateElapsed();
       if (!ok) throw new Error(error || "API error");
 
       clearInterval(timerId);
-      location.href = prefillUrl; // フォームへ遷移
+      location.href = prefillUrl;
     } else {
       clearInterval(timerId);
       app.innerHTML = `<p>メニューから選択してください．</p>`;
