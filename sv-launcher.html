@@ -4,154 +4,119 @@
 <title>SV Form Launcher (LIFF)</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin:0; }
-  header { padding: 16px; font-weight: 600; }
-  .card { margin: 12px 16px; padding: 12px; border: 1px solid #e5e5e5; border-radius: 8px; }
-  .muted { color:#666; font-size: 13px; line-height:1.4; }
-  .err { color:#b00020; white-space:pre-wrap; }
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin:0; padding:16px; line-height:1.6; }
+  h1 { font-size:18px; margin:0 0 12px; }
+  .card { border:1px solid #e5e5e5; border-radius:12px; padding:14px; }
+  .muted { color:#666; font-size:13px; }
   .ok { color:#0a7; }
-  .btn { display:inline-block; padding:12px 16px; border-radius:8px; border: none; background:#111; color:#fff; font-weight:600; }
+  .err { color:#b00020; white-space:pre-wrap; }
+  .btn { margin-top:12px; display:inline-block; padding:12px 16px; border-radius:10px; border:none; background:#111; color:#fff; font-weight:600; }
   .btn:disabled { opacity:.5; }
-  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  code { background:#f6f6f6; padding:2px 6px; border-radius:4px; }
+  code { background:#f6f6f6; padding:1px 5px; border-radius:4px; }
 </style>
 <body>
-<header>SV Form Launcher</header>
-<div class="card">
-  <div id="status" class="muted">初期化中…</div>
-  <div id="tips" class="muted" style="margin-top:6px"></div>
-  <div id="actions" style="margin-top:12px"></div>
-  <div id="error" class="err" style="margin-top:12px"></div>
-</div>
+  <h1>SV Form Launcher</h1>
+  <div class="card">
+    <div id="status" class="muted">初期化中…</div>
+    <div id="hint" class="muted" style="margin-top:6px"></div>
+    <div id="actions" style="margin-top:10px"></div>
+    <div id="error" class="err" style="margin-top:10px"></div>
+  </div>
 
 <script>
-/** ====== 必要な定数（環境に合わせて変更） ====== */
-const LIFF_ID = "2008180210-1WyAevA4"; // 共有済みのLIFF ID
-const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-jwqLt0KAEBXNtdgvM8rFb5xMjMJs9x-WZ3pZp32trAwRn/exec"; // Token_APIのWebApps
+/** ====== 環境定数 ====== */
+const LIFF_ID = "2008180210-1WyAevA4"; // 共有済み LIFF ID（openid スコープ必須）
+const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-jwqLt0KAEBXNtdgvM8rFb5xMjMJs9x-WZ3pZp32trAwRn/exec"; // Token_API WebApps
 
-/** ====== 固定エントリID（Token_APIで使用しているフォーム定義に合わせる） ====== */
-const FORM_DEF = {
-  sv: {
-    baseView: "https://docs.google.com/forms/d/e/1FAIpQLSeR9N5W0bNUrvApOwulrR-AW-W2qod5qs3N88eWcBIlEVnFJQ/viewform?usp=pp_url",
-    entryAteAtDate: "entry.1770801410",
-    entryAteAtTime: "entry.329058014",
-    entryMealType:  "entry.1089371079",
-    entryUid:       "entry.740470139",
-    entryToken:     "entry.1602181185",
-    entrySession:   "entry.1529582124"
-  }
-};
+/** 表示ラベル（Token_API と一致） */
+const MEAL_LABELS = { breakfast:"朝食", lunch:"昼食", dinner:"夕食", snack:"間食" };
 
-// 英→日 表示（Token_API側の定義と一致させる）
-const MEAL_LABELS = { breakfast:'朝食', lunch:'昼食', dinner:'夕食', snack:'間食' };
-
-/** ====== ユーティリティ ====== */
-const $ = sel => document.querySelector(sel);
+/** ====== 簡易DOMユーティリティ ====== */
+const $ = s => document.querySelector(s);
 const qs = new URLSearchParams(location.search);
-const mode = (qs.get("mode") || "").toLowerCase();      // "test" | "prev"
-const meal = (qs.get("meal") || "").toLowerCase();      // "breakfast"|"lunch"|"snack"|"dinner"
 
-function fmtJst(date, fmt) {
-  // JSTで整形 "yyyy-MM-dd" / "HH:mm"
+/** ====== 日時ユーティリティ（JST） ====== */
+function nowJST() { return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" })); }
+function fmt(date, pat) {
   const z = v => String(v).padStart(2,"0");
-  const y = date.getFullYear();
-  const m = z(date.getMonth()+1);
-  const d = z(date.getDate());
-  const H = z(date.getHours());
-  const M = z(date.getMinutes());
-  if (fmt === "yyyy-MM-dd") return `${y}-${m}-${d}`;
-  if (fmt === "HH:mm") return `${H}:${M}`;
+  const y = date.getFullYear(), m = z(date.getMonth()+1), d = z(date.getDate());
+  const H = z(date.getHours()), M = z(date.getMinutes());
+  if (pat === "yyyy-MM-dd") return `${y}-${m}-${d}`;
+  if (pat === "HH:mm") return `${H}:${M}`;
   return date.toISOString();
 }
-function nowJST() { return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" })); }
-function yesterdayJST() { const d = nowJST(); d.setDate(d.getDate()-1); return d; }
 
-function chooseDateByMode() {
-  if (mode === "test") {
-    // ★テスト日は固定（研究者の設計に合わせて任意変更可）
-    return new Date("2025-01-01T09:00:00+09:00");
-  }
-  if (mode === "prev") {
-    return yesterdayJST();
-  }
-  // デフォルトは今日
-  return nowJST();
-}
-
-// prefillUrl のクエリを書き換える（date/time/meal）
-// ※ uid/token/session など「mintで付与された必須項目」は維持
-function overridePrefill(prefillUrl, { ateDate, ateTime, mealJp }) {
-  const u = new URL(prefillUrl);
-  const q = u.searchParams;
-
-  // baseView を明示（将来のpageHistory差異に強くするため）
-  u.pathname = new URL(FORM_DEF.sv.baseView).pathname;
-
-  // 必須hiddenは mint 由来の entry をそのまま維持
-  // 上書きするのは 日付/時刻/食事区分 のみ
-  if (FORM_DEF.sv.entryAteAtDate) q.set(FORM_DEF.sv.entryAteAtDate, ateDate);
-  if (FORM_DEF.sv.entryAteAtTime) q.set(FORM_DEF.sv.entryAteAtTime, ateTime);
-  if (FORM_DEF.sv.entryMealType && mealJp) q.set(FORM_DEF.sv.entryMealType, mealJp);
-
-  return u.toString();
-}
-
-/** ====== メイン処理 ====== */
+/** ====== メイン ====== */
 (async function main(){
-  // 1) パラメータ検証
-  if (!["test","prev"].includes(mode) || !["breakfast","lunch","snack","dinner"].includes(meal)) {
-    $("#status").textContent = "このページはリッチメニュー経由で使用します。";
-    $("#tips").innerHTML = '例：<code>?mode=test&meal=breakfast</code> / <code>?mode=prev&meal=dinner</code>';
+  // 1) クエリ検証
+  const form = (qs.get("form") || "sv").toLowerCase();   // 既定は sv
+  const meal = (qs.get("meal") || "").toLowerCase();     // breakfast|lunch|snack|dinner
+  const date = (qs.get("date") || "");                   // 例: 2025-01-01
+  const time = (qs.get("time") || "");                   // 例: 07:30
+
+  if (form !== "sv" || !["breakfast","lunch","snack","dinner"].includes(meal)) {
+    $("#status").textContent = "このページはリッチメニューのボタンから起動してください。";
+    $("#hint").innerHTML = '例) <code>?form=sv&meal=breakfast</code> / <code>?form=sv&meal=dinner&date=2025-01-01</code>';
     return;
   }
 
-  $("#status").textContent = "LIFF初期化中…";
+  // 2) LIFF 初期化・ログイン
+  $("#status").textContent = "LIFF 初期化中…";
   await liff.init({ liffId: LIFF_ID });
   if (!liff.isLoggedIn()) { liff.login(); return; }
 
-  // 2) Token_API.mint を呼ぶ（既存APIをそのまま利用）
-  $("#status").textContent = "トークン準備中…";
-  const idToken = liff.getIDToken(); // ★ Token_API（verify）互換
-  const body = new URLSearchParams({
-    action: "mint",
-    idToken,                // 既存Token_APIは idToken を検証する実装
-    form: "sv",
-    mealType: meal          // breakfast|lunch|snack|dinner（サーバ側でも日本語化される）
-  });
-  const res = await fetch(GAS_API, {
-    method: "POST",
-    headers: { "Content-Type":"application/x-www-form-urlencoded" },
-    body
-  });
-  const j = await res.json().catch(()=>({}));
-  if (!j || !j.ok || !j.prefillUrl) {
-    $("#error").textContent = "Token_APIエラー: " + (j && (j.error||"") || "unknown");
+  // 3) Token_API へ mint（idToken は必須）
+  $("#status").textContent = "フォームの準備中…";
+  const idToken = liff.getIDToken();
+  if (!idToken) {
+    $("#error").textContent = "idToken を取得できませんでした。LIFF のスコープに openid を付与してください。";
+    $("#status").textContent = "エラー";
     return;
   }
 
-  // 3) 事前入力（日付・時刻・食事区分）を上書き
-  const base = chooseDateByMode();
-  const ateDate = fmtJst(base, "yyyy-MM-dd");
-  const ateTime = fmtJst(nowJST(), "HH:mm"); // 「記入時刻」を初期値とする
-  const mealJp  = MEAL_LABELS[meal] || meal;
+  // 付与するパラメータ（ateDate/ateTime は任意。指定がなければ Token_API 側で「今」を使用）
+  const body = new URLSearchParams({
+    action: "mint",
+    idToken,
+    form,                 // "sv"
+    mealType: meal        // breakfast|lunch|snack|dinner
+  });
+  if (date) body.append("ateDate", date);
+  if (time) body.append("ateTime", time);
 
-  const url = overridePrefill(j.prefillUrl, { ateDate, ateTime, mealJp });
+  let prefillUrl = "";
+  try {
+    const res = await fetch(GAS_API, {
+      method: "POST",
+      headers: { "Content-Type":"application/x-www-form-urlencoded" },
+      body
+    });
+    const j = await res.json();
+    if (!j || !j.ok || !j.prefillUrl) throw new Error(j && j.error || "Token_API error");
+    prefillUrl = j.prefillUrl;
+  } catch (err) {
+    $("#error").textContent = String(err && err.message || err);
+    $("#status").textContent = "エラー";
+    return;
+  }
 
-  // 4) 夕食だけ案内（スコア入力の周知）。※サーバは無改修
-  const isDinner = meal === "dinner";
-  $("#status").innerHTML = `<span class="ok">準備完了</span>：${mode==="test"?"テスト":"前日"}・${mealJp} を開きます。`;
-  $("#tips").innerHTML = isDinner
-    ? "※ 食事バランスガイドの自己申告スコアは「夕食」で入力してください。朝/昼/間は未入力で問題ありません。"
-    : "※ 自己申告スコアは「夕食」で入力してください（ここでは未入力でOK）。";
+  // 4) ユーザ案内＋遷移
+  const mealJp = MEAL_LABELS[meal] || meal;
+  const whenStr = date ? `${date}` : fmt(nowJST(), "yyyy-MM-dd");
+  $("#status").innerHTML = `<span class="ok">準備完了</span>：${whenStr} の「${mealJp}」フォームを開きます。`;
+  $("#hint").textContent = (meal === "dinner")
+    ? "※ 自己申告の食事バランスガイドスコアは夕食で入力／確認してください。"
+    : "※ 朝/昼/間は自己申告スコアの入力は不要です。";
 
-  // 5) 自動リダイレクト（2秒後）。手動ボタンも用意
-  const go = ()=> location.href = url;
   const btn = document.createElement("button");
-  btn.className = "btn"; btn.textContent = "フォームを開く";
-  btn.onclick = go;
+  btn.className = "btn";
+  btn.textContent = "フォームを開く";
+  btn.onclick = () => location.href = prefillUrl;
   $("#actions").appendChild(btn);
 
-  setTimeout(go, 1600);
+  // 自動で遷移（1.2秒後）
+  setTimeout(()=> location.href = prefillUrl, 1200);
 })().catch(err => {
   $("#error").textContent = String(err && err.stack || err);
   $("#status").textContent = "エラー";
