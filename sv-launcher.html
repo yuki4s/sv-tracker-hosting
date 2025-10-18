@@ -32,11 +32,10 @@ const GAS_API = "https://script.google.com/macros/s/AKfycbwWUFUpNkNC7zp6CnVCxN-j
 /** 表示ラベル（Token_API と一致） */
 const MEAL_LABELS = { breakfast:"朝食", lunch:"昼食", dinner:"夕食", snack:"間食" };
 
-/** ====== 簡易DOMユーティリティ ====== */
+/** ====== DOMユーティリティ ====== */
 const $ = s => document.querySelector(s);
-const qs = new URLSearchParams(location.search);
 
-/** ====== 日時ユーティリティ（JST） ====== */
+/** ====== JSTユーティリティ ====== */
 function nowJST() { return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" })); }
 function fmt(date, pat) {
   const z = v => String(v).padStart(2,"0");
@@ -47,9 +46,46 @@ function fmt(date, pat) {
   return date.toISOString();
 }
 
+/** ====== クエリ取得（LIFFユニバーサルリンク対策） ======
+ * 1) 通常: location.search に form/meal がある
+ * 2) liff.line.me からの起動: location.search の liff.state 内に本来のクエリが入る
+ * 3) さらに hash 内に入る環境もあるので最低限のフォールバックも用意
+ */
+function getMergedQuery() {
+  // 直の search を見る
+  const url = new URL(location.href);
+  let sp = new URLSearchParams(url.search);
+
+  // form が無い → liff.state を展開
+  if (!sp.get("form")) {
+    const state = sp.get("liff.state");
+    if (state) {
+      try {
+        // state は "/sv-launcher.html?form=sv&meal=..." のような文字列
+        const stUrl = new URL(state, location.origin);
+        sp = new URLSearchParams(stUrl.search);
+      } catch(_) {
+        // 先頭に "/" がないケースのフォールバック
+        const pseudo = state.startsWith("?") ? state : ("?"+state);
+        sp = new URLSearchParams(pseudo);
+      }
+    }
+  }
+
+  // それでも無ければ hash を見る（万一のフォールバック）
+  if (!sp.get("form") && location.hash) {
+    const h = location.hash.replace(/^#/, "");
+    if (h.includes("=")) {
+      sp = new URLSearchParams(h);
+    }
+  }
+  return sp;
+}
+
 /** ====== メイン ====== */
 (async function main(){
-  // 1) クエリ検証
+  // 1) クエリ検証（liff.state 含めて解釈）
+  const qs = getMergedQuery();
   const form = (qs.get("form") || "sv").toLowerCase();   // 既定は sv
   const meal = (qs.get("meal") || "").toLowerCase();     // breakfast|lunch|snack|dinner
   const date = (qs.get("date") || "");                   // 例: 2025-01-01
